@@ -1,7 +1,7 @@
 //==============================================
 // GAMESERVERCODE
 // =============================================
-// 목차: UDP 코드 작성
+// 목차: 논블로킹 소켓
 //==============================================
 #include "pch.h"
 #include <iostream>
@@ -13,120 +13,92 @@
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 
+void HandleError(const char* cause) {
+	int32 errCode = ::WSAGetLastError();
+	cout << cause << "ErrorCode" << errCode << endl;
+
+}
 
 int main()
 {
-	//save("GameServer.cpp", "ServerCodeFile.txt");
-
+	save("GameServer.cpp", "ServerCodeFile.txt");
+	cout << "Server" << endl;
 	WSADATA wsData;
 	if (::WSAStartup(MAKEWORD(2, 2), &wsData))
 		return 0;
 
-	SOCKET listenSocket = ::socket(AF_INET, SOCK_STREAM, 0);
-	if (listenSocket == INVALID_SOCKET) {
-
-		int32 errCode = ::WSAGetLastError();
-		cout << "SocketErrorCode" << endl;
+	SOCKET  serverSocket = ::socket(AF_INET, SOCK_DGRAM, 0);
+	if (serverSocket == INVALID_SOCKET) {
+		HandleError("Socket");
 		return 0;
 	}
 
+	//옵션을 해석 하고 처리할 주체?
+	//소켓 코드 - >SOL_SOCKET
+	//IPv4-> IPPROTO_IP
+	//TCP PROTOCOL -> IPPROTO_TCP
 
-	//회사의 주소를 찍어줘야함(나의 주소는?)
-	SOCKADDR_IN	serverAddr;//IPv4
-	::memset(&serverAddr, 0, sizeof(serverAddr));
-	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	serverAddr.sin_port = htons(7777);
-
-
-	//안내원의 폰을 개통해줘야함.!
-	if (::bind(listenSocket, (SOCKADDR*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR)
+	//SO_KEEPALIVE = 주기적으로 연결 상태 확인 여부 (TCP ONLY)
+	//상대방이 소리소문없이 연결을 끊는다면?
+	//주기적으로 TCP 프로토콜 연결 상태 확인,-> 끊어진 연결 감지
 	{
-		int32 errCode = ::WSAGetLastError();
-		cout << "SocketErrorCode" << endl;
-		return 0;
+		bool enable = true;
+		setsockopt(serverSocket, SOL_SOCKET, SO_KEEPALIVE, (char*)&enable, sizeof(enable));
 	}
+	//SO_LINGER  = 지연하다.
+	// 송신 버퍼에 있는 데이터를 보낼 것인가 ? 날릴것인가에 대한 얘기
+
+	//onoff = 0이면 closesocket()이 바로 리턴, 아니면 linger초만큼 대기 (default 0)
+	//linger : 대기시간
+	LINGER linger;
+	linger.l_onoff = 1; 
+	linger.l_linger = 5;
+	::setsockopt(serverSocket, SOL_SOCKET, SO_KEEPALIVE, (char*)&linger, sizeof(linger));
 
 
-	//영업 시작
-	if (::listen(listenSocket, 10)) {
-		int32 errCode = WSAGetLastError();
-		cout << "Listen ErrorCode" << endl;
-		return 0;
-	}
-
-	//-------------------------
-
-	while (true) {
-		SOCKADDR_IN	clientAddr;//IPv4
-		::memset(&clientAddr, 0, sizeof(serverAddr));
-		int32 addrLen = sizeof(clientAddr);
-		
-		
-		
-		SOCKET clientSocket = ::accept(listenSocket, (SOCKADDR*)&clientAddr, &addrLen);
-		//cleint소켓이 데이터를 주고 받을때 사용함!!!
-		if (clientSocket == INVALID_SOCKET) {
-			int32 errCode = ::WSAGetLastError();
-			cout << "Accept Error" << errCode << endl;
-			return 0;	SOCKADDR_IN	serverAddr;//IPv4
-			::memset(&serverAddr, 0, sizeof(serverAddr));
-		}
-
-		//손님 입장
-		char ipAddress[16];
-		::inet_ntop(AF_INET, &clientAddr.sin_addr, ipAddress, sizeof(ipAddress));
-		cout << "client Conneted! IP" << ipAddress << endl;
-
-
-
-		while (true) {
-			//==============================================
-			// 통신 코드 작성
-			//===============================================
-		
-			//얼만큼 보낼지 모르니 넉넉히 잡는다
-			char recvBuffer[1000];
-
-
-			//==============================================
-			//서버 -> 클라 리시브 코드 
-			//===============================================
-		
-			//받은 데이터의 크기를 반환해줌 recv 데이터는 -1을 반환하면.문제가 생김
-			int32 recvLen = ::recv(clientSocket, recvBuffer, sizeof(recvBuffer),0);
-			if (recvLen <= 0) {
-				int32 errCode = ::WSAGetLastError();
-				cout << "Recv ErrorCode" << endl;
-				return 0;
-
-			}
-	
-			cout << "Recv Data! Data == " << recvBuffer << endl;
-			cout << "Recv Data! len == " << recvLen << endl;
-			///////////////////////////////////////////////////////
-		
-
-			//==============================================
-			//서버 - > 클라 데이터 전송 코드
-			//===============================================
-			int32 resultCode = ::send(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
-			if (resultCode == SOCKET_ERROR) {
-
-				int32 errCode = ::WSAGetLastError();
-				cout << "send ErrorCode:  " << errCode << endl;
-				return 0;
-			}
-
-
-		}
-
-	}
-
-	//-------------------------
+	//Half-close
+	//SD_SEND :send 막는다.
+	//SD_RECEIVE :recv 막는다.
+	//SD_BOTH: 둘다 막는다.
+	::shutdown(serverSocket, SD_SEND);
 
 	//소켓 리소스 반환
-	closesocket(listenSocket);
+	//send-> closesocket
+	//::closesocket(serverSocket);
+
+	//SO_SNDBUF = 송신 버퍼 크기
+	//SO_RCVBUF = 수신 버퍼 크기
+
+	int32 sendBufferSize;
+	int32 optionLen = sizeof(sendBufferSize);
+	::getsockopt(serverSocket, SOL_SOCKET, SO_SNDBUF, (char*)&sendBufferSize, &optionLen);
+	cout << "송신 버퍼 크기: " << sendBufferSize << endl;
+
+
+	int32 recvBufferSize;
+	 optionLen = sizeof(recvBufferSize);
+	::getsockopt(serverSocket, SOL_SOCKET, SO_SNDBUF, (char*)&recvBufferSize, &optionLen);
+	cout << "송신 버퍼 크기: " << recvBufferSize << endl;
+	
+
+	//SO_REUSEADDR
+	//IP 주소 및 PORT 재사용
+	{
+		//예상치못한 서버 종료 같은후 포트번호 재사용까지 시간이 쫌 필요한데 그걸 무시하고 실행가능
+		bool enable = true;
+		::setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&enable, sizeof(enable));
+	}
+
+	// IPPROTO_TCP
+	// TCP_NODELAY = Nagle 네이글 알고리즘 작동 여부
+	// 데이터가 충분히 크면 보내고 ,그렇지 않으면 데이터가 충분히 쌓일때까지 대기!
+	// 장점: 작은 패킷이 불필요하게 많이 생성되는 일을 방지
+	// 단점: 반응 시간 손해
+	{
+		bool enable = true;
+		::setsockopt(serverSocket, IPPROTO_TCP, TCP_NODELAY, (char*)&enable, sizeof(enable));
+	}
+
 
 	//윈속 종료.
 	::WSACleanup();

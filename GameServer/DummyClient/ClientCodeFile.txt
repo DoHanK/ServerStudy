@@ -219,3 +219,136 @@ int main()
 
 }
 
+
+
+==================================================
+DummyClient.cpp, 저장시간: 2023-08-25 금요일 오전 2:43:23
+==================================================
+//==============================================
+// CLIENT CODE
+//==============================================
+// 목차: UDP 코드 작성
+//==============================================
+
+
+#include "pch.h"
+#include <iostream>
+
+//마이크로소프트에서 제공하는 소켓 라이브러리
+#include <WinSock2.h>
+#include <MSWSock.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+
+void HandleError(const char* cause) {
+	int32 errCode = ::WSAGetLastError();
+	cout << cause << "ErrorCode" << errCode << endl;
+
+}
+
+int main()
+{
+	save("DummyClient.cpp", "ClientCodeFile.txt");
+
+
+	WSADATA wsData;
+	if (::WSAStartup(MAKEWORD(2, 2), &wsData))
+		return 0;
+
+	SOCKET clientSocket = ::socket(AF_INET, SOCK_DGRAM, 0);
+	// 소문자로 리눅스에 있을수도 있고, 대문자는 윈속에서만 대부분 제공하는것
+	if (clientSocket == INVALID_SOCKET) {
+		HandleError("Socket");
+		return 0;
+	}
+
+	SOCKADDR_IN	serverAddr;//IPv4
+	::memset(&serverAddr, 0, sizeof(serverAddr));
+	serverAddr.sin_family = AF_INET;
+
+	::inet_pton(AF_INET, "127.0.0.1", &serverAddr.sin_addr);
+	serverAddr.sin_port = htons(7777);
+	
+	if(::connect(clientSocket, (SOCKADDR*)&serverAddr, sizeof(serverAddr)))
+	{
+		int32 errCode = ::WSAGetLastError();
+		cout << "SocketErrorCode" << endl;
+		return 0;
+	}
+
+	//등록 대상을 루프문 돌때마다 설정할게 아니라 위에서 상대를 먼저 정하고 감
+	//connected UDP 
+	::connect(clientSocket, (SOCKADDR*)&serverAddr, sizeof(serverAddr));
+
+
+
+	cout << "Client" << endl;
+		//==============================================
+		// 연결 성공! 이제부터 데이터 송수신이 가능하다.!
+		//===============================================
+	while (true) {
+
+
+		//==============================================
+		//클라 - > 서버 데이터 전송 코드
+		//===============================================
+			char sendBuffer[100] = "hello World";
+
+
+			//unconneted UDP
+			//int32 resultCode = ::sendto(clientSocket, sendBuffer, sizeof(sendBuffer), 0, (SOCKADDR*)&serverAddr, sizeof(serverAddr));
+
+			//conneted UDP
+			//장시간 통신을 할때에는 커넷티드 통신이 좋다
+			int32 resultCode = ::send(clientSocket, sendBuffer, sizeof(sendBuffer), 0);
+
+			if (resultCode == SOCKET_ERROR) {
+				HandleError("SendTo");
+				return 0;
+			}
+			cout << "sendData! len= " << sizeof(sendBuffer) << endl;
+		
+
+		////////////////////////////////////////////////////////////
+
+
+
+		//==============================================
+		// 서버 - >클라 데이터 리시브 코드
+		//===============================================
+		SOCKADDR_IN recvAddr;
+		::memset(&recvAddr, 0, sizeof(recvAddr));
+		int32 addrLen = sizeof(recvAddr);
+
+		char recvBuffer[1000];
+		//UNCONNETED UDP
+		//int32 recvLen = ::recvfrom(clientSocket, recvBuffer, sizeof(recvBuffer), 0, (SOCKADDR*)&recvAddr, &addrLen);
+		
+		//CONNETED UDP
+		int32 recvLen = ::recv(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
+
+		if (recvLen <= 0) {
+			HandleError("RecvFrom");
+			return 0;
+		}
+
+		cout << "Recv Data! Data == " << recvBuffer << endl;
+		cout << "Recv Data! len == " << recvLen << endl;
+		////////////////////////////////////////////////////////////
+		
+		Sleep(1000);
+	}
+
+
+	//소켓 리소스 반환
+	closesocket(clientSocket);
+
+
+	//윈속 종료.
+	::WSACleanup();
+
+
+
+
+}
+
