@@ -1,3 +1,8 @@
+
+
+==================================================
+GameServer.cpp, 저장시간: 2023-08-25 금요일 오전 12:59:51
+==================================================
 // GameServer.cpp : 이 파일에는 'main' 함수가 포함됩니다. 거기서 프로그램 실행이 시작되고 종료됩니다.
 //
 #include "pch.h"
@@ -13,7 +18,7 @@
 
 int main()
 {
-	//save("GameServer.cpp", "ServerCodeFile.txt");
+	save("GameServer.cpp", "ServerCodeFile.txt");
 
 	WSADATA wsData;
 	if (::WSAStartup(MAKEWORD(2, 2), &wsData))

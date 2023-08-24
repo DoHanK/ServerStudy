@@ -14,4 +14,4 @@
 
 using namespace std;
 
-void HelloWorld();
+void save(const std::string& fileName, const std::string& TargetfileName);
