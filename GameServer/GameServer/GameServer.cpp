@@ -1,5 +1,8 @@
-// GameServer.cpp : 이 파일에는 'main' 함수가 포함됩니다. 거기서 프로그램 실행이 시작되고 종료됩니다.
-//
+//==============================================
+// GAMESERVERCODE
+// =============================================
+// 목차: UDP 코드 작성
+//==============================================
 #include "pch.h"
 #include <iostream>
 
@@ -70,12 +73,53 @@ int main()
 			::memset(&serverAddr, 0, sizeof(serverAddr));
 		}
 
-
+		//손님 입장
 		char ipAddress[16];
 		::inet_ntop(AF_INET, &clientAddr.sin_addr, ipAddress, sizeof(ipAddress));
 		cout << "client Conneted! IP" << ipAddress << endl;
 
 
+
+		while (true) {
+			//==============================================
+			// 통신 코드 작성
+			//===============================================
+		
+			//얼만큼 보낼지 모르니 넉넉히 잡는다
+			char recvBuffer[1000];
+
+
+			//==============================================
+			//서버 -> 클라 리시브 코드 
+			//===============================================
+		
+			//받은 데이터의 크기를 반환해줌 recv 데이터는 -1을 반환하면.문제가 생김
+			int32 recvLen = ::recv(clientSocket, recvBuffer, sizeof(recvBuffer),0);
+			if (recvLen <= 0) {
+				int32 errCode = ::WSAGetLastError();
+				cout << "Recv ErrorCode" << endl;
+				return 0;
+
+			}
+	
+			cout << "Recv Data! Data == " << recvBuffer << endl;
+			cout << "Recv Data! len == " << recvLen << endl;
+			///////////////////////////////////////////////////////
+		
+
+			//==============================================
+			//서버 - > 클라 데이터 전송 코드
+			//===============================================
+			int32 resultCode = ::send(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
+			if (resultCode == SOCKET_ERROR) {
+
+				int32 errCode = ::WSAGetLastError();
+				cout << "send ErrorCode:  " << errCode << endl;
+				return 0;
+			}
+
+
+		}
 
 	}
 
