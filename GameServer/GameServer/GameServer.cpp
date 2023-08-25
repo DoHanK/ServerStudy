@@ -18,6 +18,18 @@ void HandleError(const char* cause) {
 	cout << cause << "ErrorCode" << errCode << endl;
 
 }
+const int32 BUFSIZE = 1000;
+
+//동접수만큼 만들어짐 session은
+struct Session {
+
+	SOCKET socket;
+	char recvBuffer[BUFSIZE] = {};
+	int32 recvBytes = 0;
+	int32 sendBytes = 0;
+
+};
+
 
 int main()
 {
@@ -28,14 +40,6 @@ int main()
 	WSADATA wsData;
 	if (::WSAStartup(MAKEWORD(2, 2), &wsData))
 		return 0;
-
-	//블로킹(Blocking) 소켓
-	// accept -> 접속한 클라가 있을때
-	//connet-> 서버 접속 성공했을때
-	//send , sendto -> 요청한 데이터를 송신 버퍼에 복사했을때
-	//recv, recvfrom -> 수신 버퍼에 도착한 데이터가 있고, 이를 유저 레벨 버퍼에 복사했을때
-	
-	//논 블로킹(Non- Blocking)
 
 	SOCKET listenSocket = ::socket(AF_INET, SOCK_STREAM, 0);
 	if (listenSocket == INVALID_SOCKET)
@@ -63,66 +67,116 @@ int main()
 	if (::listen(listenSocket, SOMAXCONN) == SOCKET_ERROR)
 		return 0;
 
+	cout << "Accept" << endl;
 
-		SOCKADDR_IN clientAddr;
-		int32 addrLen = sizeof(clientAddr);
+	//Select 모델  =(select 함수가 핵심이 되는)
+	//select 입출력 모델을 이용하는 이유는 , 간단한 테스트 같은거 할때 좋기 때문에.
+	// 소켓 함수 호출이 성공할 시점을 미리 알 수 있다.
+	
+	// 문제상황))
+	//수신 버퍼에 데이터가 없는데,read  한다거나!
+	//송신 버퍼가 꽉 찼는데, write 한다거나!
+	// - 블로킹 소켓 : 조건이 만족되지 않아서 블로킹 되는 상황 예방
+	// - 논블로킹 소켓 : 조건이 만족되지 않아서 불필요하게 반복 체크하는 상황을 예방
 
+	//socket set
+	//1.읽기[] 쓰기 []  예외(Out OF Bound) [] 관찰 대상 등록
+	//OOB(Out Of Bound는 send() 마지막 인자 MSG_OBB로 보내는 특별한 데이터
+	//받는 쪽에서도 recv OOB 세팅을 해야 읽을수 있음
+	
+	//2.select(readSet , WriteSet , ExceptSet) -> 관찰 시작
+	
+	//3. 적어도 하나의 소켓이 준비되면 리턴->낙오자는 알아서 제거됨
 
-		//Accept
-		while (true) {
+	//4. 남은 소케[ㅅ 체크해서 진행
 
+	//fd_set read ;
+	// FD_ZERO : 비운다.
+	//ex)FD_ZERO(set);
+	//FD_SET : 소켓 s를 제거
+	//ex)FD_CLR(s,&Set);
+	//FD_ISSET:소켓 S가 set에 들어있으면 0이 아닌 값을 리턴한다.
+
+	vector<Session> sessions;
+	sessions.reserve(100);
+
+	fd_set reads;
+	fd_set writes;
+
+	while (true) {
+		//소켓 셋 초기화
+		FD_ZERO(&reads); 
+		FD_ZERO(&writes);
+
+		//ListenSocket 등록
+		FD_SET(listenSocket, &reads);
+
+		//소켓 등록
+		for (Session& s : sessions) {
+			
+		
+			if (s.recvBytes <= s.sendBytes)
+				FD_SET(s.socket, &reads);
+			else
+				FD_SET(s.socket, &writes);
+		}
+
+		//[옵션] 마지막 timeout 인자 설정 가능
+		int retVal = ::select(0, &reads, &writes, nullptr, nullptr); 
+		if (retVal == SOCKET_ERROR) 
+			break;
+		
+		//Listener 소켓 체크
+		if (FD_ISSET(listenSocket, &reads)) {
+			SOCKADDR_IN clientAddr;
+			int32 addrLen = sizeof(clientAddr);
 			SOCKET clientSocket = ::accept(listenSocket, (SOCKADDR*)&clientAddr, &addrLen);
-			if (clientSocket == INVALID_SOCKET) {
+			if (clientSocket != INVALID_SOCKET) {
+				cout << "Clinet Conneted" << endl;
+				sessions.push_back(Session{clientSocket});
+			}
+		}
 
-				//원래 블록 했어야했는데...너가 논블로킹으로 하라며
-				if (::WSAGetLastError() == WSAEWOULDBLOCK)
+		//나머지 소켓 체크
+		for (Session& s : sessions) {
+
+			//read체크
+			if (FD_ISSET(s.socket, &reads)) {
+				int32 recvLen = ::recv(s.socket, s.recvBuffer, BUFSIZE, 0);
+				if (recvLen <= 0) {
+				//TODO :sessions 제거
+					continue;
+				}
+
+				s.recvBytes = recvLen;
+			}
+			//write 체크
+
+			if (FD_ISSET(s.socket, &writes)) {
+
+				//블로킹 모드 - > 모든 데이터 다 보냄
+				//논블로킹 모드 -> 일부만 보낼수가 있음(상대방 수신 버퍼 상황에 따라
+				int32 sendLen = ::send(s.socket, &s.recvBuffer[s.sendBytes], s.recvBytes - s.sendBytes, 0);
+				if (sendLen == SOCKET_ERROR) {
+
 					continue;
 
-				//Error
-				break;
+				}
+
+				s.sendBytes += sendLen;
+				if (s.recvBytes == s.sendBytes) {
+					s.recvBytes = 0;
+					s.sendBytes = 0;
+				}
+
+
 			}
 
-			cout << "client Conneted!" << endl; 
 
-			//recv
-			while (true) {
-
-				char recvBuffer[1000];
-				int32 recvLen = ::recv(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
-
-				if (recvLen == SOCKET_ERROR) {
-
-					if (::WSAGetLastError() == WSAEWOULDBLOCK)
-						continue;
-
-					break;
-				}
-				else if (recvLen == 0) {
-					//연결 끊어짐
-					break;
-				}
-
-				cout << "Recv Data Len = " << recvLen << endl;
-
-				//send
-				while (true) {
-
-					if (::send(clientSocket, recvBuffer, recvLen, 0) == SOCKET_ERROR) {
-
-
-						//원래 블록 했어야했는데.. 너가 논 블로킹으로 하라며,...
-						if (::WSAGetLastError() == WSAEWOULDBLOCK)
-							continue;
-
-						//Error
-						break;
-					}
-
-					cout << "send Data! Len = " << recvLen << endl;
-				}
-			}
-			
 		}
+	}
+
+
 
 	//윈속 종료.
 	::WSACleanup();
