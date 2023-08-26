@@ -1,7 +1,7 @@
 //==============================================
 // CLIENT CODE
 //==============================================
-// 목차: select모델
+// 목차: WSAEventSelect
 //==============================================
 
 
@@ -22,7 +22,7 @@ void HandleError(const char* cause) {
 
 int main()
 {
-	//save("DummyClient.cpp", "ClientCodeFile.txt");
+	save("DummyClient.cpp", "ClientCodeFile.txt");
 	cout << "Client" << endl;
 
 
