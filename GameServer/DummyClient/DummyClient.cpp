@@ -1,7 +1,7 @@
 //==============================================
 // CLIENT CODE
 //==============================================
-// 목차: WSAEventSelect
+// 목차: Overlapped 모델 (콜백 기반)
 //==============================================
 
 
@@ -22,7 +22,7 @@ void HandleError(const char* cause) {
 
 int main()
 {
-	save("DummyClient.cpp", "ClientCodeFile.txt");
+	//save("DummyClient.cpp", "ClientCodeFile.txt");
 	cout << "Client" << endl;
 
 
@@ -67,48 +67,38 @@ int main()
 
 	cout << "conneted to server!" << endl;
 	char sendBuffer[100] = "hello World";
-	
+	WSAEVENT wsaEvent = ::WSACreateEvent();
+	WSAOVERLAPPED overlapped = {};
+	overlapped.hEvent = wsaEvent;
 
 	//send
 	while (true) {
 
+		WSABUF wsaBuf;
+		wsaBuf.buf = sendBuffer;
+		wsaBuf.len = 100;
 
-		if (::send(clientSocket, sendBuffer, sizeof(sendBuffer), 0) == SOCKET_ERROR) {
+		DWORD sendLen = 0;
+		DWORD flags = 0;	
+		if (::WSASend(clientSocket, &wsaBuf, 1, &sendLen, flags, &overlapped, nullptr) == SOCKET_ERROR) {
+			
+			if (::WSAGetLastError() == WSA_IO_PENDING) {
 
-			if (::WSAGetLastError() == WSAEWOULDBLOCK)
-				continue;
+				//Pending
+				::WSAWaitForMultipleEvents(1, &wsaEvent, TRUE, WSA_INFINITE, FALSE);
+				::WSAGetOverlappedResult(clientSocket, &overlapped, &sendLen, FALSE, &flags);
+			}
+			else {
+				//진짜 문제 있는 상황
+				break;
+			}
 
-			//error
-			break;
 		}
 
 
 		cout << "send Data! Len" << sizeof(sendBuffer) << endl;
 
-
-		//Recv
-		while (true) {
-
-
-			char recvBuffer[1000];
-			int32 recvLen = ::recv(clientSocket, recvBuffer, sizeof(recvBuffer), 0);
-
-			if (recvLen == SOCKET_ERROR) {
-
-				if (::WSAGetLastError() == WSAEWOULDBLOCK)
-					continue;
-
-				break;
-			}
-			else if (recvLen == 0) {
-				//연결 끊어짐
-				break;
-			}
-
-			cout << "Recv Data Len = " << recvLen << endl;
-			break;
-
-		}
+		
 
 		
 		Sleep(1000);
