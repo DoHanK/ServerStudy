@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 
+
 void save(const std::string& fileName ,const std::string& TargetfileName)
 {
 	// fileName 읽기 모드로 연다
